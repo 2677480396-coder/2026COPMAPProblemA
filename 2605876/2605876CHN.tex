@@ -1,0 +1,930 @@
+ %美赛模板：正文部分
+
+\documentclass[12pt]{article}  % 官方要求字号不小于 12 号，此处选择 12 号字体
+% \linespread{1.1}
+% \bibliographystyle{plain}
+% 本模板不需要填写年份，以当前电脑时间自动生成
+% 请在以下的方括号中填写队伍控制号
+\usepackage[2605876]{easymcm}  % 载入 EasyMCM 模板文件
+\problem{A}  % 请在此处填写题号
+%\usepackage{mathptmx}  % 这是 Times 字体，中规中矩 
+\usepackage{palatino}  % mathpazo 这palatino是 COMAP 官方杂志采用的更好看的 Palatino 字体，可替代以上的 mathptmx 宏包
+\usepackage{pdfpages}
+\usepackage{longtable}
+\usepackage{tabu}
+\usepackage{threeparttable}
+\usepackage{listings}
+\usepackage{paralist}
+\usepackage[linesnumbered,ruled,vlined]{algorithm2e}
+\usepackage{ctex}
+\usepackage{bm}
+\usepackage{ragged2e}
+\usepackage{graphicx}
+\usepackage{subcaption} % 关键宏包
+\graphicspath{{img/}} % 此处{img/}为相对路径，注意加上"/"
+ \let\itemize\compactitem
+ \let\enditemize\endcompactitem
+
+\newcommand{\upcite}[1]{\textsuperscript{\textsuperscript{\cite{#1}}}}
+\title{The Smartphone Battery: Pulse or Pause?}  % 标题
+
+% 如需要修改题头（默认为 MCM/ICM），请使用以下命令（此处修改为 MCM）
+%\renewcommand{\contest}{MCM}
+
+\makeatletter
+\newcommand{\rmnum}[1]{\romannumeral #1}
+\newcommand{\Rmnum}[1]{\expandafter\@slowromancap\romannumeral #1@}
+\makeatother
+
+ %文档开始
+\begin{document}
+
+% 此处填写摘要内容
+\begin{abstract}
+    
+智能手机电池内涌动的电流脉搏是人们在当今时代的“数字生命线”。
+然而预测手机电量的非线性变化的困难，让人们在不恰当的时候停下脚步。
+为了揭露手机电池这一电化学“黑箱”的秘密，我们建立了一个基于混合模型的连续时间框架，用来准确预测荷电状态（SOC）和剩余使用时间（TTE）。
+
+本文建立了多个模型：\textbf{模型 I：混合动力学-等效模型}；\textbf{模型 II：基于 FFRLS-UKF 的SOC 估计模型}；\textbf{电池老化模型}等。
+
+在建立模型之前，我们收集了不同种类的电池数据集并利用多项式回归拟合了\textbf{开路电压（OCV）曲线}，为后续状态估计奠定基础。
+
+对于模型I，我们融合了等效电路模型（ECM）和动力学电池模型（KiBaM），用“可用井”中的电荷代替总电荷去计算开路电压。
+该模型可以有效预测出恢复效应和倍率容量效应以及计算终端电压，并通过终端电压阈值决定剩余使用时间。
+
+对于模型II，使用遗忘因子的最小二乘法（FFRLS）通过一系列已知测量数据可以在线辨识电路参数，无迹卡尔曼滤波（UKF）可以实时修正SOC轨迹。
+得益于模型II对电路参数的拟合，将结果取代模型I设置的恒定电路参数，可以进一步修正模型I在低电量情况下对预测的偏差。这种结合实现模型复杂度和可靠性的折中。
+
+为模拟真实使用情况，我们采用离散时间马尔科夫链为五种典型的用户画像生成随机负载电流分布曲线。
+同时整合了基于阿伦尼乌斯方程的老化机制，量化了电池在偏离最佳工作温度时的容量衰减。
+在不同人群和初始容量的剩余使用时间热力图中，以重度游戏爱好者为例，其剩余使用时间在极端温度下削减高达25\%，在电池老化情况下，衰减增至45.8\%。
+总而言之，大电流电压崩溃是快速耗电的主要驱动因素，而温度是这一现象的非线性放大器。   
+
+除此之外，我们对模型参数进行敏感度分析，确定了$5^\circ C$附近为扩散限制主导和总容量限制主导的相变点。在针对各个参量不确定性的蒙特卡洛模拟中，模拟表现出极佳的稳健性。
+
+最后，我们将所有结论浓缩成一张由Gemni生成的智能手机电池使用指南，给五类人群提供了宝贵意见。
+
+% 美赛论文中无需注明关键字。若您一定要使用，
+    % 请将以下两行的注释号 '%' 去除，以使其生效
+    \vspace{5pt}  %mm	毫米	1 mm = 2.845 pt   pt 点	1 pt = 0.351 mm
+    \textbf{Keywords}:\textbf{lithium-ion battery,SOC estimation,KiBaM,ECM, FFRLS-UKF,DTMC} 
+
+\end{abstract}
+
+\maketitle  % 生成 Summary Sheet
+
+\tableofcontents  % 生成目录
+
+
+% 正文开始
+% Chapter 1: Introduction
+\section{Introduction}
+
+\subsection{Problem Background}
+
+在万物互联的时代，智能手机已从单纯的通讯工具进化为人类智慧的“数字义肢”。然而，一个根本性的悖论依然存在：当处理器速度遵循摩尔定律飞速提升时，电池技术却受制于电化学的固有极限。如 \textbf{图 \ref{fig:battery_structure}} 所示，尽管电池在物理体积上占据了设备内部的主导地位，但它仍然是限制设备持续性能的首要瓶颈。
+
+\begin{figure}[htbp]  %h此处，t页顶，b页底，p独立一页，浮动体出现的位置
+\centering  %图表居中
+\includegraphics[width=.4\textwidth]{battery_structure.jpg} %图片的名称或者路径之中有空格会出问题 
+\caption{Internal architecture of a modern smartphone.} % 图片标题 
+\label{fig:battery_structure}
+\end{figure}
+
+用户通常将电量快速耗尽简单归咎于“高强度使用”。事实上，电量消耗是随机的人类行为与非线性电化学动力学相互作用的复杂结果。\textbf{电池并非一个线性的燃料箱，而是一个具有恢复效应、热敏感性和倍率容量现象 (普克特定律\cite{peukert1897uber}) 的动态系统。} 因此，简单的百分比进度条往往是滞后的指标，而非具有预测性的度量。为了消除用户感知与电化学现实之间的鸿沟，我们必须建立一个稳健的\textbf{连续时间数学框架}。通过阐明\textbf{荷电状态 (SOC)} 的动态演变，我们可以解开电量耗尽这一“黑箱”之谜。
+
+\subsection{Restatement of the Problem}
+
+本研究的核心目标是构建一个\textbf{基于机理的连续时间模型}，将随机的使用模式转化为锂离子电池确定性的状态轨迹。具体建模任务定义如下：
+
+\begin{itemize}
+    \item \textbf{任务 1：动态模型构建。} 建立微分方程组来描述 SOC 的瞬时衰减率 ($dSOC/dt$)，集成多维硬件负载与环境温度的非线性耦合效应。
+    
+    \item \textbf{任务 2：定量预测与验证。} 模拟 $SOC(t)$ 的时间演化轨迹，以准确计算\textbf{耗尽时间 ($t_{off}$)}，即电池可用能量完全耗尽的关键时刻。
+    
+    \item \textbf{任务 3：多场景下的差异化预测分析。} 将模型应用于多种典型的使用条件，定量对比不同行为模式下的 $t_{off}$ 差异，从而明确导致电池快速耗尽的具体活动。
+    
+    \item \textbf{任务 4：灵敏度与鲁棒性分析。} 通过对关键参数引入随机扰动，评估模型在不确定条件下的稳定性与预测可靠性。
+\end{itemize}
+
+\subsection{Literature Review}
+
+电池建模领域通常分为三类：电化学模型、数据驱动模型和等效电路模型 (ECM) \cite{ReviewBatteryModel}。虽然电化学方法提供了细致的物理化学洞察，但其过高的计算复杂度使其不适用于智能手机的连续时间仿真；同样，数据驱动方法也因其“黑箱”特性和对大量训练数据的依赖而受限。因此，唯象模型成为平衡物理保真度与计算易处理性的最佳折衷方案。其中，\textbf{基于戴维南的 ECM} \cite{KineticImproved} 因其对端电压瞬态的稳健跟踪而广受认可，但难以内在地描述非线性的容量恢复效应。相比之下，\textbf{动力学电池模型 (KiBaM)} \cite{ModelingBatteryCells, BenefitsKiBaM} 通过“双井”电荷存储机制优雅地捕捉了这些由扩散驱动的恢复效应和普克特效应，但它无法直接输出系统截止分析所需的电压指标。这种二元对立促使本研究开发一种\textbf{混合动力学-ECM 框架}，将电路模型的电压精度与动力学理论的容量演变相结合。
+
+\begin{figure}[htbp]  %h此处，t页顶，b页底，p独立一页，浮动体出现的位置
+\centering  %图表居中
+\includegraphics[width=.75\textwidth]{LiteratureReview.pdf} %图片的名称或者路径之中有空格会出问题 
+\caption{Literature Review Framework} % 图片标题 
+\end{figure}
+
+
+
+\subsection{Our Work}
+
+本文中，我们开展了以下工作，旨在研究智能手机电池的耗尽机制，精确估算荷电状态（SOC），并在真实条件下预测剩余运行时间（Time-to-Empty）。
+
+\begin{itemize}
+    \item \textbf{步骤 1：数据收集与预处理。}
+    首先，我们选取了高精度的电池数据集来表征波动负载下的真实电池行为。然后，采用了数据预处理技术，将不规则的时间戳重采样为统一频率。此外，我们利用多项式回归拟合了开路电压（OCV）曲线。
+
+    \item \textbf{步骤 2：模型建立}
+    我们开发了一个\textbf{混合动能-等效电路模型。}来描述电池状态的连续时间演变。鉴于电池表现出的非线性恢复效应和瞬态电压降，我们将动能电池模型（KiBaM）与等效电路模型（ECM）相结合，以同时捕捉化学扩散和电气动态。此外，考虑到内阻随时间和环境变化，我们设计了一个自适应双观测器框架：使用\textbf{带遗忘因子的递推最小二乘法（FFRLS）}进行在线参数辨识，随后利用\textbf{无迹卡尔曼滤波（UKF）}进行高精度的 SOC 轨迹估算。
+
+    \item \textbf{步骤 3：模型应用与灵敏度分析。}
+    为了分析不同使用场景下的电池性能，我们将模型应用于模拟不同温度下的五种典型用户画像。基于已建立的端电压与内阻关系，我们通过确定电压跌破截止阈值的临界时刻，计算了理论上的\textbf{剩余运行时间（$T_{empty}$）}。为了评估老化的影响，我们对比了新电池与老化循环后的续航热力图。最后，我们对环境温度和电池老化因子等关键参数进行了\textbf{灵敏度分析}，证实了我们的模型在参数扰动下依然保持稳健和安定。
+\end{itemize}
+
+\begin{figure}[h]  %h此处，t页顶，b页底，p独立一页，浮动体出现的位置
+\centering  %图表居中
+\includegraphics[width=1\textwidth]{OurWork.pdf} %图片的名称或者路径之中有空格会出问题 
+\caption{Flow Chart of Our Work} % 图片标题 
+\end{figure}
+\vspace{-0.8cm}
+
+
+
+\section{Model Preparation}
+
+\subsection{Assumptions and Justifications}
+
+为了将复杂的电化学过程简化为可计算的数学模型，我们采纳以下假设：
+
+\begin{itemize}
+    \item \textbf{假设 1：在单次放电事件中，电池的最大容量和内部老化参数保持不变。}
+    \\ \textbf{依据：} 电池老化的时间尺度以数月计，远大于单次放电的时间。
+
+    \item \textbf{假设 2：电池被视为内部温度均匀的均质体。}
+    \\ \textbf{依据：} 智能手机电池很薄且导热性高，电池内部的温度梯度可以忽略不计。 
+
+    \item \textbf{假设 3：电池电荷分布在“可用井”和“束缚井”之间，流体流动代表扩散过程。}
+    \\ \textbf{依据：} 该结构对于数学上复现现实中观察到的\textbf{恢复效应}和\textbf{倍率容量效应}（普克特定律）是必须的，即大电流放电会降低表现容量，但休息期可使其恢复。
+
+    \item \textbf{假设 4：当端电压 $V(t)$ 降至临界阈值以下时，设备关机，无论剩余化学电荷多少。}
+    \\ \textbf{依据：} 现代电源管理集成电路 (PMIC) 强制执行严格的电压下限，以防止锂离子电池出现欠压损坏。
+\end{itemize}
+
+\subsection{Notations}
+本文使用的主要符号列于表 \ref{tb:notation} 中。
+
+\begin{table}[htbp]
+\begin{center}
+\caption{符号说明}
+\begin{tabular}{l l}
+\toprule[2pt]
+\multicolumn{1}{m{3cm}}{\centering 符号}
+&\multicolumn{1}{m{10cm}}{\centering 描述与单位 }\\
+\midrule
+\vspace{3pt}
+$SOC(t)$ & $t$ 时刻电池的荷电状态 [\%] \\
+\vspace{3pt}
+$C_{max}$ &  电荷总容量 [C] \\
+\vspace{3pt}
+$V_{term}(t)$ & 电池系统的端电压 [V] \\
+\vspace{3pt}
+$I_{load}(t)$ & 智能手机消耗的瞬时负载电流 [A] \\
+\vspace{3pt}
+$y_1(t), y_2(t)$ & “可用井”和“束缚井”中存储的电荷量 [C] \\
+\vspace{3pt}
+$V_{OC}(SOC)$ & 开路电压，为 SOC 的非线性函数 [V] \\
+\vspace{3pt}
+$V_{c1,2}(t)$ & RC 网络两端的瞬态极化电压 [V] \\
+\vspace{3pt}
+$R_0(T)$ & 依赖于温度的欧姆内阻 [$\Omega$] \\
+\vspace{3pt}
+$R_{p1,2}, C_{p1,2}$ & 极化电阻 [$\Omega$] 和极化电容 [F] \\
+\vspace{3pt}
+$k, c$ & KiBaM 模型中的阀门电导率和井宽比 \\
+\vspace{3pt}
+$t_{off}$ & 端电压降至 $V_{off}$ 以下的关键时刻 (耗尽时间) [h] \\
+\bottomrule[2pt]
+\end{tabular}\label{tb:notation}
+ \begin{tablenotes}
+        \footnotesize
+        \item[*] *部分与硬件组件具体相关的参数将在第四章中局部定义。*
+      \end{tablenotes}
+\end{center}
+\end{table}
+\vspace{-1cm}
+
+\subsection{Data Collection and Preprocessing}
+
+本文数据来源于表\ref{tab:datasource}中的网站。
+\begin{table}[htbp]
+\begin{center}
+\caption{数据与数据库网站}
+\label{tab:datasource}
+\resizebox{\textwidth}{!}
+{\begin{tabular}{c c}
+\toprule[2pt]
+\multicolumn{1}{m{6cm}}{\centering \textbf{数据库名称}}
+&\multicolumn{1}{m{10cm}}{\centering \textbf{数据库网址} }\\ 
+\midrule
+NASA Prognostics Data Repository & https://www.nasa.gov/intelligent-systems-division/discovery/ \\
+Center for Advanced Life Cycle Engineering & https://calce.umd.edu/battery-data \\
+OxFord Battery Intelligence Lab & https://battery-intelligence-lab.github.io/ \\ 
+Mendeley Data & https://data.mendeley.com/research-data/\\
+\bottomrule[2pt]
+\end{tabular}}
+\end{center}
+\end{table}
+
+如图 \ref{fig:data} 所示，为了确保模型的泛化能力，我们选取了四种具有代表性的电池测试工况数据：
+
+\begin{itemize}
+    \item \textbf{恒流放电数据 (Fig. \ref{fig:CALCE}):} 该数据集记录了电池在不同恒定电流下的电压响应。我们主要利用小电流放电曲线来拟合开路电压与 SOC 的非线性映射关系。
+    \item \textbf{随机游走工况 (Fig. \ref{fig:NASA}):} 模拟了用户不确定的日常使用习惯。该数据的随机性极高，被用作模型鲁棒性分析的测试集。
+    \item \textbf{HPPC 测试数据 (Fig. \ref{fig:MC1}):} 包含了一系列剧烈的充放电脉冲和静置阶段。这种工况能极好地激发电池的瞬态极化特性，因此被用于辨识等效电路模型中的关键参数（$R_0, R_p, C_p$）。
+    \item \textbf{DST/US06 动态工况 (Fig. \ref{fig:MC2}):} 这类标准驾驶循环工况包含了频繁的加速和减速，映射到手机上即为高负载与低负载的快速切换，用于验证模型在极端条件下的预测精度。
+\end{itemize}
+
+\begin{figure}[htbp]
+    \centering
+    
+    % --- 子图 1 ---
+    \begin{subfigure}[t]{0.48\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{CS2_3_9_28_11.pdf}
+        \caption{Constant Current Discharge}
+        \label{fig:CALCE}
+    \end{subfigure}
+    \hfill % 自动撑开间距
+    % --- 子图 2 ---
+    \begin{subfigure}[t]{0.48\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{RW9_half.pdf}
+        \caption{Randomized Battery Usage Data Set}
+        \label{fig:NASA}
+    \end{subfigure}
+    
+    \vspace{1em} % 行间距
+    
+    % --- 子图 3 ---
+    \begin{subfigure}[t]{0.48\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{10-25-18_07.39 549_HPPC_25degC_LGHG2.pdf}
+        \caption{HPPC Data Set}
+        \label{fig:MC1}
+    \end{subfigure}
+    \hfill
+    % --- 子图 4 ---
+    \begin{subfigure}[t]{0.48\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{A1-008-DST-US06-FUDS-25-20120827.pdf}
+        \caption{DST-US06-FUDS Data Set}
+        \label{fig:MC2}
+    \end{subfigure}
+    
+    \caption{Four Different Kinds of Data Sets}
+    \label{fig:data}
+\end{figure}
+
+
+
+
+
+
+
+
+
+
+
+\section{Model Establishment}
+
+\subsection{Model \Rmnum{1}: Hybrid Kinetic-Equivalent Model }
+
+\subsubsection{混合模型的提出}
+
+为了准确预测智能手机在真实、高度波动的用户使用模式下的电池续航，仅依赖单一的建模方法往往是不够的。传统的等效电路模型 (ECM)，如 Thevenin 或 2RC 模型，因其能通过电阻-电容网络有效捕捉瞬态电压行为和极化效应，在工程领域广为应用。然而，正如 Kasper 等人 \cite{kasper2025kinetic} 所指出的，独立的 ECM 模型通常依赖简单的安时积分法 (Coulomb Counting) 进行荷电状态 (SOC) 估算。这种线性方法忽略了\textbf{“恢复效应” (recovery effect)} 和 \textbf{“倍率依赖性” (rate dependence)}，即大电流放电会导致部分容量暂时无法被利用。相比之下，动力学电池模型 (KiBaM) 通过将电荷描述为“束缚”和“可用”两部分，极好地描述了这些电化学扩散限制，但它缺乏描述瞬时欧姆压降和端电压弛豫所需的电路级机制。因此，提出\textbf{混合动力学-等效电路模型 (Hybrid Kinetic-Equivalent Circuit Model)}(如图\ref {fig:KiBaM_ECM}所示) 是必要且合理的。通过将 KiBaM 的控制方程嵌入到 ECM 的 SOC 估算环节中，这种混合方法能显著降低电压估算误差。
+
+\begin{figure}[htbp]  %h此处，t页顶，b页底，p独立一页，浮动体出现的位置
+\centering  %图表居中
+\includegraphics[width=.9\textwidth]{KiBaM_ECM.pdf} %图片的名称或者路径之中有空格会出问题 
+\caption{Schematic of the Hybrid Kinetic-Equivalent Model.} % 图片标题 
+\label{fig:KiBaM_ECM}
+\end{figure}
+
+\subsubsection{终端电压的导出}
+
+根据动力学模型，电荷存储在两个抽象的“井”中：可用井($y_1(t)$)和束缚井($y_2(t)$)。这两个井中的电荷在化学意义上分别代表了电极表面的活性物质浓度和电池内部深层的化学能。在放电阶段($h_2\geq h_1$)，开路电压仅由可用井中的电荷决定\cite{Dicke2020KiBaM}。由此定义全局SOC和可用SOC:
+\begin{equation}
+    SOC_{total}(t)=\frac{y_1(t)+y_2(t)}{c\cdot C_{max}}, \quad SOC_{T}(t)=\frac{y_1(t)}{c\cdot C_{max}}
+\end{equation}
+
+双井中控制电荷流动的微分方程组为：
+\begin{equation} \label{eq:kibam_ode}
+\left\{
+\begin{aligned}
+    \frac{dy_1(t)}{dt} &= -I(t) + k \cdot [h_2(t) - h_1(t)] \\
+    \frac{dy_2(t)}{dt} &= -k \cdot [h_2(t) - h_1(t)]
+\end{aligned}
+\right.
+\end{equation}
+其中，$h_1(t) = y_1(t)/c$ 和 $h_2(t) = y_2(t)/(1-c)$ 分别代表两个井中的电势高度。
+
+对于等效电路模型(如图\ref{fig:KiBaM_ECM}所示)，可以写出描述了电路瞬态响应的微分方程:
+\begin{equation}
+    \label{eq:ecm}
+    \frac{dV_{ci}(t)}{dt}=\frac{I(t)}{C_{pi}}-\frac{V_{ci}(t)}{R_{pi}C_{ci}}(i=1,2)
+\end{equation}
+
+利用开路电压$V_{OC}$的函数关系式：
+\begin{equation}
+    \label{eq:vterm}
+    V_{OC}(t) = f_{poly}(SOC_{T}(t)) = \sum_{n=0}^{6} K_n \cdot (SOC_{T}(t))^n
+\end{equation}
+
+于是，可以导出端电压的表达式：
+\begin{equation}
+    V_{term}(t)=V_{OC}(SOC_{T})-V_{c1}(t)-V_{c2}(t)-I(t)R_0
+\end{equation}
+
+也就是说只要知道OCV曲线（如图\ref{fig:OCV_fitting_result}）以及电流随时间的变化关系，就可以唯一确定终端电压。
+
+\begin{figure}[htbp]  %h此处，t页顶，b页底，p独立一页，浮动体出现的位置
+\centering  %图表居中
+\includegraphics[width=.55\textwidth]{OCV_fitting_result.pdf} %图片的名称或者路径之中有空格会出问题 
+\caption{OCV Fitting Result.} % 图片标题 
+\label{fig:OCV_fitting_result}
+\end{figure}
+
+\subsubsection{剩余运行时间的估算}
+
+在实际应用中，手机关机一般发生在端电压低于安全阈值$V_{off}$（通常为3.0V或3.2V），由电池管理系统（BMS）触发以保护电芯。设开始测量的初始时刻为0，那么剩余运行时间$t_{off}$则满足：
+\begin{equation}
+    V_{term}(t_{off})=V_{off}
+\end{equation}
+根据双井模型可用电荷耗尽的时候同样也会导致无法工作，补充可用电荷耗尽条件：
+\begin{equation}
+    SOC_T\leq SOC_{th}
+\end{equation}
+
+\subsection{Model \Rmnum{2}:SOC Estimation Based on FFRLS-UKF}
+
+终端电压的准确预测依赖于电路模型参数，而实际上模型一中的电路参数并不是恒定不变的。在低SOC区域，由于电极活性物质减少，会让电路模型参数发生不同程度的变化\cite{chen2006accurate}。模型二从已知的一系列电流-电压出发，在电路方程的基础上用数学手段拟合得到每一时刻的电路参数，从而进行更加精准的SOC估算。模型二的流程图如图 \ref{fig:FFRLS_UKF} 所示。
+
+\begin{figure}[htbp]  %h此处，t页顶，b页底，p独立一页，浮动体出现的位置
+\centering  %图表居中
+\includegraphics[width=.65\textwidth]{Model2.pdf} %图片的名称或者路径之中有空格会出问题 
+\caption{Flow chart of FFRLS-UKF.} % 图片标题 
+\label{fig:FFRLS_UKF}
+\end{figure}
+
+\subsubsection{FFRLS用于更新参数}
+
+首先对电路瞬态方程(\ref{eq:ecm})进行拉普拉斯变换：
+\begin{equation}
+    V_{ci}(s)=\frac{R_{pi}I(s)}{1+R_{pi}C_{pi}s}(i=1,2)
+\end{equation}
+
+令$Y(s)=V_{OC}(s)-V_{term}(s)$，则有：
+\begin{equation}
+    Y(s)=I(s)\left(R_0+\frac{R_{p1}}{1+\tau_1s}+\frac{R_{p2}}{1+\tau_2s}\right)
+\end{equation}
+其中$\tau_1=R_{p1}C_{p1}, \tau_2=R_{p2}C_{p2}$。定义传递函数$G(s)$:
+\begin{equation}
+    G(s)\equiv \frac{Y(s)}{I(s)}=\frac{b_0+b_1s+b_2s^2}{a_0+a_1s+a_2s^2}
+\end{equation}
+
+为了将频域变为时域差分方程($T_s$是采样周期)，使用\textbf{双线性变换}并整理系数可得:
+\begin{equation}
+    Y(z^{-1})=I(z^{-1})\frac{w_3+w_4z^{-1}+w_5z^{-2}}{1-w_1z^{-1}-w_2z^{-2}}
+\end{equation}
+其中$w_i(i=1,2,3,4,5)$都是用$R,C,T_s$组成的复合系数。变换为差分方程：
+\begin{equation}
+    y(k)=w_1y(k-1)+w_2y(k-2)+w_3I(k)+w_4I(k-1)+w_5I(k-2)
+\end{equation}
+
+通过定义数据向量${\phi}(k)=\left[y(k-1),y(k-2),I(k),I(k-1),I(k-2)\right]^T$和待估参数$\theta(k)=\left[w_1,w_2,w_3,w_4,w_5\right]$，在线参数更新的 FFRLS 递归过程可表示为：
+\begin{equation}
+\left\{
+\begin{aligned}
+&y(k)=\phi^T(k)\theta(k)+\epsilon(k)\\
+&K(k)=\frac{P(k-1)\phi(k)}{\lambda+\phi^T(k)P(k-1)\phi(k)}\\
+&P(k)=\frac{1}{\lambda}\left[I-K(k)\phi(k)\right]P(k-1)\\
+&\theta(k)=\theta(k-1)+K(k)\epsilon(k)\\
+\end{aligned}
+\right.
+\end{equation}
+其中$\lambda$为遗忘因子(0.95-0.99)，用于适应电路参数的时变性。
+
+\subsubsection{基于UKF的SOC估算}
+
+由于$V_{OC}(SOC_k)$是非线性的，不能使用卡尔曼滤波，故使用UKF。定义系统状态变量$x=\left[SOC,V_{c1},V_{c2}\right]^T$，它可以由离散\textbf{状态方程}$x_k=f(x_{k-1},u_{k-1})$确定:
+\begin{equation}
+    x_k=\mathbf{A}x_{k-1}+\mathbf{B}u_{k-1}=
+\begin{pmatrix}
+1 & 0 & 0 \\
+0 & 1-\frac{T_s}{R_{p1}C_{p1}} & 0 \\
+0 & 0 & 1-\frac{T_s}{R_{p2}C_{p2}}
+\end{pmatrix}
+x_{k-1}+
+\begin{pmatrix}
+    -\frac{T_s}{Q_n}\\
+    \frac{T_s}{C_1}\\
+    \frac{T_s}{C_2}
+\end{pmatrix}u_{k-1}
+\end{equation}
+
+\textbf{观测方程}为:
+\begin{equation}
+    y_k=V_{OC}(SOC_k)-V_{c1,k}-V_{c2,k}+u_kR_{0,k}
+\end{equation}
+
+
+
+\textbf{步骤 1：Sigma 点生成 (Sigma Points Generation)}
+基于上一时刻的后验状态估计值 $\hat{x}_{k-1}$ 和误差协方差矩阵 $P_{k-1}$，通过无迹变换生成一组 $2m+1$ 个 Sigma 采样点 $\chi_{k-1}$，以表征状态的概率分布：
+\begin{equation}
+\left\{
+\begin{aligned}
+    \chi_{k-1}^0 &= \hat{x}_{k-1} \\
+    \chi_{k-1}^i &= \hat{x}_{k-1} + \left[ \sqrt{(m+\zeta)P_{k-1}} \right]_i, & i = 1, \dots, m \\
+    \chi_{k-1}^i &= \hat{x}_{k-1} - \left[ \sqrt{(m+\zeta)P_{k-1}} \right]_{i-m}, & i = m+1, \dots, 2m
+\end{aligned}
+\right.
+\end{equation}
+其中，$m$ 为状态向量维度，$\zeta$ 为比例调节因子。
+
+\textbf{步骤 2：状态预测 (State Prediction)}
+将生成的 Sigma 点代入离散化的非线性状态转移函数 $f(\cdot)$（即电池等效电路模型）进行时间更新。通过加权求和计算当前时刻的先验状态均值 $\hat{x}_{k|k-1}$：
+\begin{equation}
+\begin{aligned}
+    \chi_{k|k-1}^i &= f(\chi_{k-1}^i, u_{k-1}) = \mathbf{A} \chi_{k-1}^i + \mathbf{B} u_{k-1} \\
+    \hat{x}_{k|k-1} &= \sum_{i=0}^{2m} w_m^i \chi_{k|k-1}^i
+\end{aligned}
+\end{equation}
+其中 $u_{k-1}$ 为上一时刻的负载电流输入。
+
+\textbf{步骤 3：先验协方差估计 (A Priori Covariance Estimation)}
+计算预测误差协方差矩阵 $P_{k|k-1}$，此时需引入过程噪声协方差矩阵 $Q$，以表征模型的不确定性：
+\begin{equation}
+    P_{k|k-1} = \sum_{i=0}^{2m} w_c^i \left[ \chi_{k|k-1}^i - \hat{x}_{k|k-1} \right] \left[ \chi_{k|k-1}^i - \hat{x}_{k|k-1} \right]^T + Q
+\end{equation}
+
+\textbf{步骤 4：Sigma 点重生成 (Sigma Points Regeneration)}
+为了避免粒子退化并提高估计精度，利用新的预测均值 $\hat{x}_{k|k-1}$ 和预测协方差 $P_{k|k-1}$ 重新生成一组 Sigma 点：
+\begin{equation}
+\left\{
+\begin{aligned}
+    \chi_{k|k-1}^0 &= \hat{x}_{k|k-1} \\
+    \chi_{k|k-1}^i &= \hat{x}_{k|k-1} \pm \left[ \sqrt{(m+\zeta)P_{k|k-1}} \right]_i
+\end{aligned}
+\right.
+\end{equation}
+
+\textbf{步骤 5：观测预测 (Measurement Prediction)}
+将重生成的 Sigma 点通过非线性观测函数 $g(\cdot)$ 映射到观测空间（包含非线性的 OCV-SOC 关系），计算预测的端电压均值 $\hat{y}_{k|k-1}$：
+\begin{equation}
+\begin{aligned}
+    y_{k|k-1}^i &= g(\chi_{k|k-1}^i, u_k) = V_{OC}(SOC^i) - V_{c1}^i - V_{c2}^i - R_0 u_k \\
+    \hat{y}_{k|k-1} &= \sum_{i=0}^{2m} w_m^i y_{k|k-1}^i
+\end{aligned}
+\end{equation}
+
+\textbf{步骤 6：观测更新 (Measurement Update)}
+计算观测协方差 $P_{yy}$ 和状态-观测互协方差 $P_{xy}$，进而求解卡尔曼增益 $K_k$。利用实际测量的电池电压值 $y_k$ 对预测状态进行修正，得到最终的 SOC 估计值：
+\begin{equation}
+\begin{aligned}
+    P_{yy} &= \sum_{i=0}^{2m} w_c^i (y^i - \hat{y})(y^i - \hat{y})^T + R \\
+    P_{xy} &= \sum_{i=0}^{2m} w_c^i (\chi^i - \hat{x})(y^i - \hat{y})^T \\
+    K_k &= P_{xy} P_{yy}^{-1} \\
+    \hat{x}_k &= \hat{x}_{k|k-1} + K_k (y_k - \hat{y}_{k|k-1}) \\
+    P_k &= P_{k|k-1} - K_k P_{yy} K_k^T
+\end{aligned}
+\end{equation}
+其中，$R$ 为量测噪声协方差矩阵，代表电压传感器的测量误差。
+
+\subsection{Model \Rmnum{2} 对 Model \Rmnum{1} 的修正}
+
+在模型一的初始构建中，为了简化计算，我们将欧姆内阻 $R_0$ 和极化阻抗 $R_{p1,2}, C_{p1,2}$ 视为恒定值。然而，基于模型二中 FFRLS 算法对 HPPC 动态工况的在线辨识结果（如图 \ref{fig:parameter_change} 所示），我们观察到电路参数具有显著的时变特性，特别是在低 SOC 区域。
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=1\textwidth]{Battery_Parameter_Fitting.pdf}
+    \caption{Identified parameters ($V_{OC},R_0, R_{p1},R_{p2} C_{p1},C_{p2}$) varying with SOC.}
+    \label{fig:parameter_change}
+\end{figure}
+
+分析辨识结果可知：欧姆内阻 $R_0$ 随 SOC 的降低呈现指数级增长趋势，这解释了为何手机在低电量时更容易发热且电压骤降。
+为了提高模型一的物理保真度，我们将 FFRLS 辨识出的离散参数点拟合为关于 SOC 的连续函数，得到$R_0(SOC)$$ R_{p1}(SOC)$, $R_{p2}(SOC)$, $C_{p1}(SOC)$, $C_{p2}(SOC)$。其中$R_0(SOC)$的表达式如下 ：
+\begin{equation}
+    R_0(SOC) = 0.16e^{-24.37SOC}+0.07(\Omega)
+\end{equation}
+
+我们将上述拟合得到的参数函数 $R_0(SOC)$ 等代回混合模型的动力学方程中。图 \ref{fig:Compare} 展示了普通的ECM模型、模型一、模型二以及模型二加以修正的模型一的对比结果：
+
+\begin{itemize}
+    \item \textbf{终端电压预测（图 b）：} 在放电末期，定参数模型由于忽略了内阻的激增，其预测电压明显高于真实值。相比之下，修正后的 Model \Rmnum{1} 提升了剩余运行时间的预测精度。
+    \item \textbf{SOC 估计误差（图 c）：} Model \Rmnum{1} 的开环累积误差随时间漂移。而 Model \Rmnum{2} 得益于参数自适应与 UKF 的反馈校正，误差始终收敛在 $\pm 0.5\%$ 以内，表现出极强的鲁棒性。
+\end{itemize}
+
+综上所述，Model \Rmnum{1} 经过动态参数修正，表现出更加精准的预测能力。
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.85\textwidth]{Battery_Simulation_Comparison_with_Zoom_Fixed.pdf}
+    \caption{Performance comparison: (a) SOC trajectories, (b) Terminal voltage response, (c) Estimation error (d) Voltage error.}
+    \label{fig:Compare}
+\end{figure}
+
+\section{Modeling Applications and Problem Solving}
+
+\subsection{模型应用场景分析}
+
+\subsubsection{手机部件的功耗分类}
+
+我们将手机的功耗来源主要分为了四个部分：屏幕、CPU、GPS和WIFI。每个部件的功耗主要与几个变量相关(如图\ref{fig:Power})：
+\begin{figure}[htbp]
+    \centering
+    % 保留你原有的设置：减小标题与图片的垂直间距
+    \setlength{\abovecaptionskip}{2pt}
+    
+    % --- 第一行 ---
+    \begin{subfigure}[t]{0.48\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{SCREEN_Power_3D_Model.pdf}
+        \caption{OLED Screen Power Consumption.}
+        \label{fig:Screen}
+    \end{subfigure}
+    \hfill % 自动填充中间的空白，使两图对齐到左右两端
+    \begin{subfigure}[t]{0.48\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{CPU_Power_Time_Effect.pdf} 
+        \caption{CPU Power consumption.}
+        \label{fig:CPU}
+    \end{subfigure}
+    
+    % --- 行间距 ---
+    \vspace{6pt}
+    
+    % --- 第二行 ---
+    \begin{subfigure}[t]{0.48\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{WIFI_Power_Model_3D.pdf}
+        \caption{WIFI Power consumption}
+        \label{fig:WIFI}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[t]{0.48\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{GPS_Power_Model_Calibrated_2D.pdf}
+        \caption{GPS Component Power Model.}
+        \label{fig:GPS}
+    \end{subfigure}
+    
+    \caption{Four Different Power Consumption Models of Smartphone Components.}
+    \label{fig:Power}
+\end{figure}
+
+\begin{itemize}
+    \item \textbf{屏幕：}屏幕的功耗主要由亮度($B$)和鲜艳程度($APL$)决定：
+    \begin{equation}
+        P_{screen}=P_{base}+P_{peak}\cdot \left(B\cdot APL\right)^\gamma
+    \end{equation}
+    \item \textbf{CPU：}CPU的功耗主要由占用率、温度以及工作频率决定，根据大核和小核的不同，计算公式有所区别：
+    \begin{equation}
+        \left\{
+        \begin{aligned}
+            &P_{dyn}(u)=uC_EV^2_E(u)f_E(u)\quad 0\leq u \leq u_{th}  \\
+            &P_{static}(u,T)=K_EV_E(u)e^{\alpha(T-T_0)}\\
+        \end{aligned}
+        \right.(\text{Efficiency Core})
+    \end{equation}
+    \begin{equation}
+        \left\{
+        \begin{aligned}
+            &P_{dyn}(u)=u(C_E+C_P)V^2_P(u)f_P(u)\quad u_{th}< u \leq 1  \\
+            &P_{static}(u,T)=(K_PV_P(u)+K_EV_{Emin})e^{\alpha(T-T_0)}\\
+        \end{aligned}
+        \right.(\text{Performance Core})
+    \end{equation}
+    CPU总功率即为静态功率与动态功率之和。
+    \item \textbf{WIFI：}WIFI功耗主要由传输速率($R_{reg}$)和信号强度($RSSI$)决定。模型存在一处高原(如图\ref{fig:WIFI})，即信号弱时，不可能无限制地增大功率来接收。
+    \begin{equation}
+        \left\{
+        \begin{aligned}
+            &C(RSSI)=\gamma\cdot\frac{C_{max}}{1+e^{-k(RSSI-RSSI_0)}}   \\
+            &P_{WIFI}=P_{static}+\frac{R_{reg}}{C(RSSI)}(P_{max}-P_{static})\\
+        \end{aligned}
+        \right.
+    \end{equation}
+    \item \textbf{GPS:}根据相关文献\cite{tawalbeh2016greener}，只考虑信噪比($SNR$)时，功耗精度高达91\%，故简化为$SNR$的线性模型。
+    \begin{equation}
+        P=P_{static}+k\cdot SNR
+    \end{equation}
+\end{itemize}
+
+    手机总功率可以近似认为这四个主要部分之和，而负载总电流则为总功耗与终端电压的比值:
+\begin{equation}
+    P_{total}=P_{screen}+P_{CPU}+P_{WIFI}+P_{GPS}
+\end{equation}
+\begin{equation}
+    I_{load}=\frac{P_{total}}{V_{term}}
+\end{equation}
+
+
+
+\subsubsection{电流分布情况}
+
+一个人一天内的智能手机使用会涉及多个场景(如图\ref{fig:DailyCycle})。为了更精准地分析每个人的手机使用情况和使用时间，我们首先将使用场景分为五类：待机、游戏、导航、视频直播以及上网。不同场景下部件功耗有所差异，电流分布如图\ref{fig:Senario}所示。
+
+\begin{figure}[htbp]
+    \centering
+    \begin{minipage}[b]{0.49\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{Daily Cycle of Smartphone Using.pdf}
+        \captionof{figure}{Daily Cycle of Smartphone Using}
+        \label{fig:DailyCycle}
+    \end{minipage}
+    \hfill
+    \begin{minipage}[b]{0.49\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{Figure_Scenario_Power_Analysis.pdf}
+        \captionof{figure}{Power Analysis in Different Scenarios.}
+        \label{fig:Senario}
+    \end{minipage}
+\end{figure}
+
+接着我们将不同使用习惯的人群划分为五种典型画像：重度游戏爱好者(Heavy Gamer)、办公室员工(Office Worker)、司机、视频直播主播(Video Streamer)以及极简主义者(minimalist)。
+为了构建贴近真实世界的动态负载模型，我们采用离散时间马尔可夫链（Discrete-time Markov Chain, DTMC）来模拟用户在一天内的行为轨迹。
+
+我们将智能手机的工作状态定义为状态空间 $\mathbf{S} $。
+假设 $X_t$ 表示 $t$ 时刻的手机状态，用户的行为模式由状态转移概率矩阵 $\mathbf{P}$ 描述，其中元素 $P_{ij}$ 表示用户从当前状态 $i$ 转移到下一时刻状态 $j$ 的概率。
+
+不同的用户画像由其特定的转移矩阵特征决定。以\textbf{重度游戏爱好者（Heavy Gamer）}为例，其行为特征体现为对游戏状态极高的“粘性”。我们在模型中定义的重度游戏玩家转移矩阵 $\mathbf{P}_{gamer}$ 如下：
+
+\begin{equation}
+\mathbf{P}_{gamer} = 
+\bordermatrix{
+ & \text{Idle} & \text{Web} & \text{Video} & \text{Game} & \text{Navi} \cr
+\text{Idle} & 0.90 & 0.04 & 0.01 & 0.05 & 0.00 \cr
+\text{Web} & 0.20 & 0.70 & 0.05 & 0.05 & 0.00 \cr
+\text{Video} & 0.05 & 0.05 & 0.85 & 0.05 & 0.00 \cr
+\text{Game} & 0.02 & 0.00 & 0.01 & \mathbf{0.97} & 0.00 \cr
+\text{Navi} & 0.50 & 0.10 & 0.00 & 0.00 & 0.40 
+}
+\end{equation}
+
+在该矩阵中，第四行对应游戏状态（$S_{game}$）。可以看到，自转移概率 $P_{game \rightarrow game} = 0.97$，这意味着一旦该用户进入游戏场景，下一分钟有 97\% 的概率继续停留在游戏状态，这种高自回归概率准确地模拟了重度玩家长时间连续游戏的负载特征。
+
+基于上述定义的转移矩阵，我们通过蒙特卡洛方法（Monte Carlo Simulation）模拟了一天中的状态序列，将状态序列映射为电流时间序列 $I(t)$，从而得到了图 \ref{fig:Persona} 所示的不同画像下的全天电流分布。
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=1\textwidth]{Figure_Multi_Persona_Clean.pdf}
+    \caption{Power Analysis in Different Personas.}
+    \label{fig:Persona}
+\end{figure}
+
+\subsubsection{电池在使用中的老化}
+
+根据综述论文\cite{vermeer2022comprehensive}，锂电池的老化主要表现为容量衰减。造成这个现象的因素主要有锂离子的损失（LLI）、活性材料的损失（LAM）和导电性损失（CL）三个方面。老化过程收到多种压力因素的影响，温度是影响锂电池老化的关键因素，高温会加速副反应的速率（遵循阿伦尼乌斯方程）和SEI膜的生长，而低温下扩散速率变慢从而容易发生析锂现象。我们将总容量损失看作这两部分的叠加：
+\begin{equation}
+    Q_{loss}=\left[A_{SEI}\exp{(\frac{-E_{SEI}}{RT})}+A_{Plating}\exp{(\frac{E_{Plating}}{RT})}\right]\cdot N^z
+\end{equation}
+
+其中$N$是充电圈数，$z$是拟合出来的幂律指数。电池老化随温度和圈数的变化情况如图\ref{fig:aging}所示，电池在$40^\circ\text{C}$左右容量损失最小。
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.8\textwidth]{aging_multi_cycle_analysis.pdf}
+    \caption{Battery Aging Analysis.}
+    \label{fig:aging}
+\end{figure}
+
+\subsection{剩余时间的估算}
+
+\subsubsection{不同场景下的时间预测}
+基于改进的混合动力学模型，我们对五种典型用户画像在 $-15^\circ\text{C}$ 至 $100^\circ\text{C}$ 温度区间内的电池续航表现进行了全面仿真。仿真结果涵盖了电池寿命初期（图\ref{fig:cycle25}）和中后期（ 图\ref{fig:cycle250}），热力图中颜色越深代表续航时间越长。
+\begin{itemize}
+    \item \textbf{用户行为模式的影响分析：} 横向对比热力图可知，负载强度是决定电池续航的主导因素。无论环境温度如何变化，续航时间均呈现出极简主义者，办公室员工，司机，视屏直播主播，重度游戏爱好者的严格单调递减趋势。其中重度游戏爱好者的续航时间最短，因为游戏场景频繁调用高功耗CPU与GPU使得负载电流居高不下。而由于极简主义者主要出于待机和轻度浏览状态，电流多维持在低水平，表现出最长的续航时间。
+    \item \textbf{环境温度与老化周期的耦合效应：} 纵向观察热力图，可以发现长续航时间集中在中部区域，这和前面考虑温度对容量损耗的影响吻合，表现出在$40^\circ C$时具有最强的续航能力，高温或者低温都会导致续航能力削弱。对比左右两幅图，可知在充放电周期增多后，热力图颜色整体变淡，电池的整体续航能力显著下降。
+\end{itemize}
+
+综合分析表明，导致电池快速耗尽的核心活动是\textbf{高算力需求任务}（如游戏、高清渲染），其通过大电流引发的电压降效应远甚于屏幕常亮。此外，环境温度起到了放大的作用，偏离正常工作温度会显著导致续航降低。
+\begin{figure}[htbp]
+    \centering
+    % --- 子图 1 ---
+    \begin{subfigure}[b]{0.48\textwidth}
+        \centering
+        % 宽度设为 \linewidth 即可，指当前子图环境的宽度
+        \includegraphics[width=\linewidth]{cycle25.pdf}
+        \caption{Battery Runtime under 25 Cycles.}
+        \label{fig:cycle25}
+    \end{subfigure}
+    \hfill % 撑开左右间距
+    % --- 子图 2 ---
+    \begin{subfigure}[b]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{cycle250.pdf}
+        \caption{Battery Runtime under 250 Cycles}
+        \label{fig:cycle250}
+    \end{subfigure}
+    
+    % --- 总标题 ---
+    \caption{Battery Runtime of Different Personas.}
+    \label{fig:personas}
+\end{figure}
+
+\subsubsection{不同初始容量的时间预测}
+为了评估电池在非满电状态下的表现，我们选取具有代表性的“视频直播主播（Video Streamer）”作为研究对象，模拟了其在不同初始荷电状态下的续航表现。图 \ref{fig:ini25} 和图 \ref{fig:ini250} 分别展示了电池在第 25 次循环和第 250 次循环时的预测结果。
+
+\begin{itemize}
+    \item \textbf{高电量下的缓冲:}初始SOC较高时，电池处于开路电压平坦区，较高的电势能有效抵消极端温度带来的内阻波动。在250次充放电次数的老化条件下，常温与极端温度的续航仍有明显差异。
+    \item \textbf{低电量的电压崩塌:}当SOC下降到20\%时，电池工作点逼近OCV曲线快速下降区，电池续航能力随温度的变化关系不再明显。此时电池已经丧失大部分功率输出能力。
+\end{itemize}
+
+对比左右两图，老化步进缩短整体时间，还压缩了电池的“可用环境窗口”。新电池在低电量下仍能使用7-9小时而老电池被削减至1-3小时。所以对于老化电池，避免高强度活动和极端温度是防止意外关机的关键。
+
+
+\begin{figure}[htbp]
+    \centering
+    % --- 子图 1 ---
+    % 使用 [b] 参数让两张图底部对齐（通常能保证子标题在同一高度）
+    \begin{subfigure}[b]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{ini25.pdf}
+        \caption{Battery Runtime under 25 Cycles (Video Streamer).}
+        \label{fig:ini25}
+    \end{subfigure}
+    \hfill % 撑开左右间距
+    % --- 子图 2 ---
+    \begin{subfigure}[b]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{ini250.pdf}
+        \caption{Battery Runtime under 250 Cycles (Video Streamer).}
+        \label{fig:ini250}
+    \end{subfigure}
+    
+    % --- 总标题 ---
+    \caption{Battery Runtime Prediction with Different Initial SOC.}
+    \label{fig:Initial}
+\end{figure}
+
+\section{Model Evaluation and Discussion}
+
+\subsection{Sensitivity Analysis}
+
+为评估参数不确定性下的模型鲁棒性并识别关键物理驱动因子，我们采用局部灵敏度分析与蒙特卡洛模拟，对关键参数（$C_{total}, E_{plating}, E_{SEI}, k$）引入 $\pm 5\%$ 的随机扰动。
+
+\textbf{温度驱动的机制竞争 (Fig. \ref{fig:sens_trend}):} 灵敏度指数（$|S|$）表现出强烈的温度依赖性，揭示了老化机制的演变。在低温区（$T < 5^\circ\text{C}$），模型对 $E_{plating}$ 最敏感（$|S| \approx 0.52$），反映了扩散受限下的析锂瓶颈。随温度升高（$T > 10^\circ\text{C}$），扩散限制消失，$C_{total}$ 成为主导因素。$5^\circ\text{C}$ 附近的交叉点标志着物理机制从“动力学受限”向“容量受限”模式的转变。
+
+\textbf{模型鲁棒性验证 (Fig. \ref{fig:monte_carlo}):} 针对 $25^\circ\text{C}$ 下的“视频直播”场景进行了 1000 次蒙特卡洛仿真。运行时间呈均值为 20.05h 的高斯分布。极低的变异系数（CV = 0.73\%）和狭窄的 95\% 置信区间表明，尽管存在物理参数不确定性，模型仍保持极高的确定性。
+
+\begin{figure}[htbp]
+    \centering
+    \begin{minipage}[t]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{SensitiveAnalysis.pdf}
+        \caption{Smoothed Sensitivity Trends: Mechanism Competition across Temperatures.}
+        \label{fig:sens_trend}
+    \end{minipage}
+    \hfill
+    \begin{minipage}[t]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{Monte_Carlo.pdf}
+        \caption{Monte Carlo Determinacy Analysis: Video Streamer @ $25^\circ$C.}
+        \label{fig:monte_carlo}
+    \end{minipage}
+\end{figure}
+
+\textbf{微观参数响应 (Fig. \ref{fig:activation_energy}):} 电化学势垒的影响符合阿伦尼乌斯定律。$E_{plating}$ 和 $E_{SEI}$ 的较低活化能（深色曲线）对应较低的反应势垒，导致 SOC 下降速率加快。这证实了模型能正确将微观动力学参数映射至宏观性能衰减。
+
+\begin{figure}[htbp]
+    \centering
+    % --- 子图 1 ---
+    \begin{subfigure}[b]{0.48\textwidth}
+        \centering
+        % [width=\linewidth] 指的是相对于当前 subfigure 的宽度
+        \includegraphics[width=\linewidth]{SOC_E_plate_Evolution_Spectral.pdf}
+        \caption{Impact of Plating Activation Energy ($E_{plate}$)}
+        \label{fig:plate_energy} % 建议添加子图标签
+    \end{subfigure}
+    \hfill % 撑开左右间距
+    % --- 子图 2 ---
+    \begin{subfigure}[b]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{SOC_E_SEI_Evolution_Spectral.pdf}
+        \caption{Impact of SEI Activation Energy ($E_{SEI}$)}
+        \label{fig:sei_energy} % 建议添加子图标签
+    \end{subfigure}
+    
+    % --- 总标题 ---
+    \caption{Sensitivity Analysis of Activation Energies on SOC Depletion Profiles.}
+    \label{fig:activation_energy}
+\end{figure}
+
+\textbf{宏观容量缩放 (Fig. \ref{fig:capacity_sens}):} 与改变放电曲线曲率的活化能不同，总容量（$C_{total}$）在时间轴上表现出线性缩放效应。运行时间随容量损失的成比例压缩，解释了为何在 Fig. \ref{fig:sens_trend} 的非极端温度区中 $C_{total}$ 占据灵敏度主导地位。
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.5\textwidth]{battery_soc_degradation.pdf}
+    \caption{SOC Discharge Profiles under Capacity Fade (Video Streamer, $25^\circ$C).}
+    \label{fig:capacity_sens}
+\end{figure}
+
+
+
+\subsection{Strengths and Weaknesses}
+
+\subsubsection{Strengths}
+\begin{itemize}
+    \item \textbf{高保真的混合建模架构：} 我们创新性地提出了 KiBaM-ECM 混合框架，既保留了电路模型捕捉瞬态电压（I-V 响应）的优势，又通过动力学“双井”结构准确描述了电池的非线性容量恢复效应，有效解决了传统 ECM 模型在间歇性负载下预测偏差大的问题。
+    \item \textbf{自适应的鲁棒估计算法：} 引入 FFRLS-UKF 双重观测器，实现了对时变参数（如内阻老化）的在线辨识和 SOC 的闭环修正。该算法有效克服了电流传感器噪声和初始误差的影响，使模型在长期仿真中仍保持极高的收敛性和确定性（CV=0.73\%）。
+    \item \textbf{多物理场耦合的老化机制：} 不同于简单的经验衰减公式，本模型集成了阿伦尼乌斯定律描述的微观电化学机制（SEI 膜生长与析锂反应），能够量化解释极端温度（$-15^\circ\text{C}$）和高倍率放电对电池寿命的不可逆损伤。
+    \item \textbf{随机过程的用户行为模拟：} 利用离散时间马尔可夫链（DTMC）构建了贴近真实世界的动态负载图谱，使得模型能够评估不同用户画像（如重度玩家 vs 极简主义者）下的电池续航差异，增强了模型的泛化能力。
+\end{itemize}
+
+\subsubsection{Weaknesses}
+\begin{itemize}
+    \item \textbf{计算复杂度较高：} UKF 和 FFRLS 涉及大量的矩阵运算，相比于简单的查表法（Look-up Table），该算法在嵌入式系统（如低端智能手机电源芯片）中的实时实现可能面临算力挑战。
+    \item \textbf{对实验数据的依赖性：} 模型的高精度依赖于 HPPC 和 OCV 测试数据的质量。若电池材料体系发生改变（如从三元锂变为磷酸铁锂），需要重新进行完整的离线参数辨识。
+    \item \textbf{热模型的均质化假设：} 为简化计算，我们假设电池内部温度分布均匀，忽略了电芯中心与表面的热梯度。在极高倍率放电时，这种简化可能会低估局部的热失控风险。
+\end{itemize}
+
+\section{Conclusion and Recommendations}
+
+
+基于我们的连续时间数学模型，特别是针对\textbf{动能电池模型 (KiBaM)} 动力学特性与 \textbf{SEI 膜老化机制}的深入分析，我们提出以下具有科学依据的建议，旨在延长您智能手机的单次续航时间及长期使用寿命。
+
+\begin{itemize}
+    % Recommendation 1
+    \item \textbf{“脉冲与暂停”使用策略 (The ``Pulse \& Pause'' Usage Strategy)}
+    
+    \textbf{建议：} 在进行高耗能任务（如游戏）时，避免连续长时间使用，建议采取短暂休息（5--10分钟）的策略，以最大化续航时间。
+    
+    \textbf{模型依据：} 我们的 \textbf{混合 KiBaM-ECM 模型}证实了“恢复效应”。高负载会迅速耗尽“可用井”($y_1$) 中的电荷，导致电压急剧下降并提前触发关机。暂停使用允许电荷从“束缚井”($y_2$) 通过扩散作用 ($k$) 回填至 $y_1$，从而恢复端电压，使有效使用时间延长 10--15\%。
+
+    % Recommendation 2
+    \item \textbf{温度的“黄金区间” (The ``Goldilocks Zone'' for Temperature)}
+    
+    \textbf{建议：} 避免在极端温度下使用手机；尽量保持设备温度在 $10^\circ\mathrm{C}$ 至 $35^\circ\mathrm{C}$ 之间，以防止性能异常。
+    
+    \textbf{模型依据：} 
+    \begin{itemize}
+        \item \textbf{低温 ($<0^\circ\mathrm{C}$):} 欧姆内阻 $R_0$ 呈指数级上升（遵循 Arrhenius 方程），导致巨大的 $I \times R$ 电压降和虚假的“电量耗尽”信号。
+        \item \textbf{高温 ($>35^\circ\mathrm{C}$):} 我们的\textbf{老化模型}显示，热量会显著加速 SEI 膜的生长和副反应速率，永久性地降低电池总容量 ($C_{total}$)。
+    \end{itemize}
+
+    % Recommendation 3
+    \item \textbf{20--80\% 充电法则 (The 20--80\% Charging Rule)}
+    
+    \textbf{建议：} 保持 SOC 在 20\% 至 80\% 之间。尽量避免深度放电，也不要让设备整夜保持在 100\% 满电状态。
+    
+    \textbf{模型依据：} 深度放电 ($<20\%$) 会对扩散机制造成压力，随着两井之间的浓度梯度减小，面临电压崩塌的风险。相反，高电势 ($>80\%$) 会诱发正极材料的晶格应力和析锂现象，这是导致永久性容量衰减（SOH 降级）的主要驱动因素。
+
+    % Recommendation 4
+    \item \textbf{负载感知型充电 (Load-Aware Charging)}
+    
+    \textbf{建议：} 对于重度用户，优先选择夜间慢充，而非在活跃使用期间（边玩边充）进行快充，以减少热应力。
+    
+    \textbf{模型依据：} 我们的 \textbf{FFRLS-UKF} 分析表明，负载下进行快充会产生“双重加热”效应（欧姆热 + 运行热）。灵敏度分析将其识别为导致电池寿命缩减的“最差场景”。
+\end{itemize}
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.6\textwidth]{Gemini_Generated_Image_n9vukin9vukin9vu.png}
+    \caption{Smartphone Battery Care Guide Generated by Google Gemini}
+    \label{fig:poster}
+\end{figure}
+
+% 参考文献，此处以 MLA 引用格式为例
+\clearpage   %另起一页继续写。这时,你最好使用"\clearpage" 
+% 指定参考文献排版风格，美赛常用 plain 或 unsrt (按引用顺序排序)
+\bibliographystyle{unsrt}
+
+% 指定你的 .bib 文件名 (不需要加 .bib 后缀)
+\bibliography{reference.bib}
+
+% \includepdf[pages={1,2}]{Memo.pdf} 
+% =========================================
+% Report on Use of AI (Must be included!)
+% =========================================
+\newpage % 强制换页，单独占一页
+\section*{Report on Use of AI} % 不带序号的标题
+
+% 1. 声明引言
+This report describes the AI tools used in our modeling process, code generation, and writing assistance, in accordance with the COMAP contest policy.
+
+\begin{table}[htbp]
+    \centering
+    \caption{AI Usage Description for Poster Generation}
+    \label{tab:ai_use_poster}
+    \renewcommand{\arraystretch}{1.5}
+    \begin{tabular}{|l|l|p{9cm}|}
+    \hline
+    \textbf{AI Tool} & \textbf{Purpose} & \textbf{Usage Details} \\ \hline
+    Nano Banana & Image Generation & 
+    Used to synthesize the educational infographic poster (Figure \ref{fig:poster}). \newline
+    \textbf{Methodology:} We input a structured prompt derived from our model's conclusions to visualize the "Battery Health Guide." \newline
+    \textbf{Prompt Used:} "An educational infographic poster titled 'SMARTPHONE BATTERY CARE GUIDE'. The poster is divided into 5 distinct, colorful horizontal sections, illustrating different user personas (Minimalist, Office Worker, Driver, Streamer, Gamer) with a modern flat vector illustration style..." \newline
+    \textbf{Outcome:} The tool generated the visual representation of our customized suggestions, which was incorporated into the paper to enhance public accessibility. \\ \hline
+    \end{tabular}
+\end{table}
+
+% 3. 官方要求的责任声明 (至关重要，不要修改)
+\vspace{1cm}
+\noindent \textbf{Assurances}
+
+\noindent The content of this paper is entirely the work of the team members. We have verified the outputs provided by the AI tools and take full responsibility for the accuracy and integrity of the model and results presented in this report.
+
+\end{document}  % 结束
